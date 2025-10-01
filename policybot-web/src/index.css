@@ -36,3 +36,28 @@ body {
   transition: none !important;
   animation: none !important;
 }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2977BB;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #221D53;
+}
+
+::-webkit-scrollbar-corner {
+  background: #f1f5f9;
+}

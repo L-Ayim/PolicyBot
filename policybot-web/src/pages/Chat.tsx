@@ -34,16 +34,9 @@ export default function Chat() {
     } catch {}
     const seed: Session = {
       id: uuidv4(),
-      title: "Welcome",
+      title: "New chat",
       createdAt: Date.now(),
-      messages: [
-        {
-          id: uuidv4(),
-          role: "assistant",
-          content: "Welcome to OmniBot! I'm here to help with any questions you have.",
-          createdAt: Date.now(),
-        },
-      ],
+      messages: [],
     };
     return [seed];
   });
@@ -75,8 +68,8 @@ export default function Chat() {
 
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState("");
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -85,9 +78,11 @@ export default function Chat() {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
-    const active = sessions.find((s) => s.id === activeSessionId);
-    setTitleDraft(active?.title ?? "");
-  }, [activeSessionId, sessions]);
+    const reduced = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    if (reduced) document.documentElement.classList.add("reduce-motion");
+  }, []);
 
   function deleteSession(id: string) {
     setSessions((prev) => {
@@ -95,7 +90,7 @@ export default function Chat() {
       if (next.length === 0) {
         const seed: Session = {
           id: uuidv4(),
-          title: "Welcome",
+          title: "New chat",
           createdAt: Date.now(),
           messages: [],
         };
@@ -138,10 +133,40 @@ export default function Chat() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [sessions, activeSessionId]);
 
+  // Scroll detection for scroll-to-bottom button
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+
+    const handleScroll = () => {
+      const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+      setShowScrollToBottom(!isAtBottom);
+    };
+
+    el.addEventListener('scroll', handleScroll);
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  function scrollToBottom() {
+    const el = listRef.current;
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
+  }
+
+  function stopGeneration() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsSending(false);
+  }
+
   function sendMessage() {
     if (!input.trim() || isSending || !activeSessionId) return;
 
     setIsSending(true);
+    abortControllerRef.current = new AbortController();
 
     const userMsg: ChatMessage = {
       id: uuidv4(),
@@ -153,6 +178,7 @@ export default function Chat() {
     const active = sessions.find((s) => s.id === activeSessionId);
     if (!active) {
       setIsSending(false);
+      abortControllerRef.current = null;
       return;
     }
 
@@ -161,7 +187,24 @@ export default function Chat() {
       s.id === activeSessionId ? { ...s, messages: nextMessages } : s
     );
 
-    setSessions(nextSessions);
+    // Auto-rename chat based on first user input
+    let updatedSessions = nextSessions;
+    const currentSession = nextSessions.find((s) => s.id === activeSessionId);
+    if (currentSession && currentSession.title === "New chat") {
+      const isFirstUserMessage = currentSession.messages.length === 1; // Only the user message we just added
+      
+      if (isFirstUserMessage) {
+        const generatedTitle = input.trim().length > 50 
+          ? input.trim().substring(0, 47) + "..."
+          : input.trim();
+        
+        updatedSessions = nextSessions.map((s) =>
+          s.id === activeSessionId ? { ...s, title: generatedTitle } : s
+        );
+      }
+    }
+
+    setSessions(updatedSessions);
     setInput("");
 
     const messages = [
@@ -180,6 +223,7 @@ export default function Chat() {
         messages,
         stream: true,
       }),
+      signal: abortControllerRef.current.signal,
     })
       .then(async (res) => {
         const reader = res.body!.getReader();
@@ -232,41 +276,53 @@ export default function Chat() {
             }
           }
         } catch (err) {
-          console.error("Streaming error:", err);
-          setSessions((prev) =>
-            prev.map((s) =>
-              s.id === activeSessionId
-                ? {
-                    ...s,
-                    messages: s.messages.map((m) =>
-                      m.id === reply.id
-                        ? { ...m, content: `Echo: ${userMsg.content}` }
-                        : m
-                    ),
-                  }
-                : s
-            )
-          );
+          if (err instanceof Error && err.name === 'AbortError') {
+            // Generation was stopped by user
+            console.log("Generation stopped by user");
+          } else {
+            console.error("Streaming error:", err);
+            setSessions((prev) =>
+              prev.map((s) =>
+                s.id === activeSessionId
+                  ? {
+                      ...s,
+                      messages: s.messages.map((m) =>
+                        m.id === reply.id
+                          ? { ...m, content: `Echo: ${userMsg.content}` }
+                          : m
+                      ),
+                    }
+                  : s
+              )
+            );
+          }
         } finally {
           setIsSending(false);
+          abortControllerRef.current = null;
         }
       })
       .catch((err) => {
-        console.error("Ollama error:", err);
-        const reply: ChatMessage = {
-          id: uuidv4(),
-          role: "assistant",
-          content: `Echo: ${userMsg.content}`,
-          createdAt: Date.now(),
-        };
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === activeSessionId
-              ? { ...s, messages: [...s.messages, reply] }
-              : s
-          )
-        );
+        if (err instanceof Error && err.name === 'AbortError') {
+          // Generation was stopped by user
+          console.log("Generation stopped by user");
+        } else {
+          console.error("Ollama error:", err);
+          const reply: ChatMessage = {
+            id: uuidv4(),
+            role: "assistant",
+            content: `Echo: ${userMsg.content}`,
+            createdAt: Date.now(),
+          };
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id === activeSessionId
+                ? { ...s, messages: [...s.messages, reply] }
+                : s
+            )
+          );
+        }
         setIsSending(false);
+        abortControllerRef.current = null;
       });
   }
 
@@ -410,54 +466,15 @@ export default function Chat() {
           {/* Chat */}
           <section className="lg:col-span-9 lg:col-start-4">
             {/* Header */}
-            <div className="bg-[#2977BB] text-white rounded-t-2xl px-6 py-4 flex items-center justify-between mb-2">
-              <div className="flex items-center gap-3">
-                {editingTitle ? (
-                  <input
-                    value={titleDraft}
-                    onChange={(e) => setTitleDraft(e.target.value)}
-                    onBlur={() => {
-                      setEditingTitle(false);
-                      setSessions((prev) =>
-                        prev.map((s) =>
-                          s.id === activeSessionId
-                            ? { ...s, title: titleDraft || "New chat" }
-                            : s
-                        )
-                      );
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        setSessions((prev) =>
-                          prev.map((s) =>
-                            s.id === activeSessionId
-                              ? { ...s, title: titleDraft || "New chat" }
-                              : s
-                          )
-                        );
-                        setEditingTitle(false);
-                      }
-                    }}
-                    className="border-b border-neutral-200 text-lg font-semibold focus:outline-none"
-                  />
-                ) : (
-                  <div className="text-lg font-semibold">
-                    {sessions.find((s) => s.id === activeSessionId)?.title ??
-                      "Live Chat"}
-                  </div>
-                )}
-                <button
-                  onClick={() => setEditingTitle((v) => !v)}
-                  className="text-white hover:text-neutral-200 focus:outline-none"
-                  aria-label="Edit session title"
-                >
-                  <Edit size={16} />
-                </button>
+            <div className="bg-[#2977BB] text-white rounded-t-2xl px-6 py-4 flex items-center justify-between">
+              <div className="text-lg font-semibold">
+                {sessions.find((s) => s.id === activeSessionId)?.title ??
+                  "New chat"}
               </div>
             </div>
 
             {/* Chat area */}
-            <div className="bg-[#E4F3FF] rounded-b-2xl h-[calc(100vh-8rem)] grid grid-rows-[1fr,auto] mb-2">
+            <div className="bg-white rounded-b-2xl h-[calc(100vh-8rem)] grid grid-rows-[1fr,auto] mb-2">
               {/* Messages */}
               <div
                 className="relative overflow-y-auto p-6 pb-32 overscroll-contain"
@@ -511,7 +528,13 @@ export default function Chat() {
                               ))}
                             </div>
                           )}
-                          <div className={`text-xs ${m.role === "assistant" ? "text-neutral-300" : "text-neutral-200"} mt-2 text-right`}>
+                          <div
+                            className={`text-xs ${
+                              m.role === "assistant"
+                                ? "text-neutral-300"
+                                : "text-neutral-200"
+                            } mt-2 text-right`}
+                          >
                             {new Date(messagesTimestamp(m)).toLocaleTimeString(
                               [],
                               { hour: "2-digit", minute: "2-digit" }
@@ -532,10 +555,36 @@ export default function Chat() {
                 {/* Removed the absolute white gradient overlay that caused the strip */}
               </div>
 
+              {/* Scroll to bottom button */}
+              {showScrollToBottom && (
+                <button
+                  onClick={scrollToBottom}
+                  className="absolute bottom-4 right-4 bg-[#2977BB] text-white p-3 rounded-full shadow-lg hover:bg-[#221D53] transition-colors focus:outline-none focus:ring-2 focus:ring-[#2977BB]/40"
+                  aria-label="Scroll to bottom"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    className="w-5 h-5"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                    />
+                  </svg>
+                </button>
+              )}
+
               {/* Composer Dock */}
               <div
                 className="bg-[#f6f9fc] p-4"
-                style={{ paddingBottom: "calc(1rem + env(safe-area-inset-bottom))" }}
+                style={{
+                  paddingBottom: "calc(1rem + env(safe-area-inset-bottom))",
+                }}
               >
                 <div className="max-w-4xl mx-auto">
                   <div
@@ -569,32 +618,47 @@ export default function Chat() {
                         }}
                       />
                       <button
-                        onClick={sendMessage}
-                        disabled={isSending || !input.trim()}
-                        aria-label="Send message"
-                        className="
+                        onClick={isSending ? stopGeneration : sendMessage}
+                        disabled={!input.trim() && !isSending}
+                        aria-label={isSending ? "Stop generation" : "Send message"}
+                        className={`
                           shrink-0 grid place-items-center
                           w-10 h-10 rounded-full
-                          bg-[#2977BB] text-white
+                          ${isSending 
+                            ? 'bg-red-500 text-white hover:bg-red-600' 
+                            : 'bg-[#2977BB] text-white hover:bg-[#221D53]'
+                          }
                           disabled:opacity-50
                           transition-transform hover:scale-[1.03] active:scale-[0.98]
                           focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2977BB]/40
-                        "
+                        `}
                       >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          className="w-5 h-5"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M5 12h14M12 5l7 7-7 7"
-                          />
-                        </svg>
+                        {isSending ? (
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            className="w-5 h-5"
+                          >
+                            <rect x="3" y="3" width="18" height="18" rx="2" fill="currentColor" />
+                          </svg>
+                        ) : (
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            className="w-5 h-5"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M5 12h14M12 5l7 7-7 7"
+                            />
+                          </svg>
+                        )}
                       </button>
                     </div>
                   </div>
