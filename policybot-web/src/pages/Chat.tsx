@@ -129,9 +129,8 @@ export default function Chat() {
   }, [sessions, activeSessionId]);
 
   useEffect(() => {
-    const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [sessions, activeSessionId]);
+    scrollToBottom();
+  }, [activeSessionId]);
 
   // Scroll detection for scroll-to-bottom button
   useEffect(() => {
@@ -143,14 +142,14 @@ export default function Chat() {
       setShowScrollToBottom(!isAtBottom);
     };
 
-    el.addEventListener('scroll', handleScroll);
-    return () => el.removeEventListener('scroll', handleScroll);
+    el.addEventListener("scroll", handleScroll);
+    return () => el.removeEventListener("scroll", handleScroll);
   }, []);
 
   function scrollToBottom() {
     const el = listRef.current;
     if (el) {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     }
   }
 
@@ -192,12 +191,13 @@ export default function Chat() {
     const currentSession = nextSessions.find((s) => s.id === activeSessionId);
     if (currentSession && currentSession.title === "New chat") {
       const isFirstUserMessage = currentSession.messages.length === 1; // Only the user message we just added
-      
+
       if (isFirstUserMessage) {
-        const generatedTitle = input.trim().length > 50 
-          ? input.trim().substring(0, 47) + "..."
-          : input.trim();
-        
+        const generatedTitle =
+          input.trim().length > 50
+            ? input.trim().substring(0, 47) + "..."
+            : input.trim();
+
         updatedSessions = nextSessions.map((s) =>
           s.id === activeSessionId ? { ...s, title: generatedTitle } : s
         );
@@ -242,6 +242,7 @@ export default function Chat() {
               : s
           )
         );
+        scrollToBottom();
         try {
           while (true) {
             const { done, value } = await reader.read();
@@ -276,7 +277,7 @@ export default function Chat() {
             }
           }
         } catch (err) {
-          if (err instanceof Error && err.name === 'AbortError') {
+          if (err instanceof Error && err.name === "AbortError") {
             // Generation was stopped by user
             console.log("Generation stopped by user");
           } else {
@@ -302,7 +303,7 @@ export default function Chat() {
         }
       })
       .catch((err) => {
-        if (err instanceof Error && err.name === 'AbortError') {
+        if (err instanceof Error && err.name === "AbortError") {
           // Generation was stopped by user
           console.log("Generation stopped by user");
         } else {
@@ -346,7 +347,7 @@ export default function Chat() {
   }, [input]);
 
   return (
-    <div className="min-h-screen bg-[#f6f9fc] text-neutral-900">
+    <div className="min-h-screen bg-[#F5F5F5] text-neutral-900">
       <main className="pt-6 pb-6 container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Sidebar */}
@@ -510,34 +511,30 @@ export default function Chat() {
                             </div>
                           </div>
                         )}
-                        <div
-                          className={`${
-                            m.role === "assistant"
-                              ? "bg-[#221D53] text-white"
-                              : "bg-[#2977BB] text-white"
-                          } px-5 py-3 rounded-2xl break-words leading-relaxed`}
-                          style={{ maxWidth: "68%" }}
-                        >
-                          <div className="whitespace-pre-wrap">{m.content}</div>
-                          {m.role === "assistant" && (m as any).citations && (
-                            <div className="mt-2 text-sm text-neutral-300">
-                              {(m as any).citations.map((c: any, i: number) => (
-                                <div key={i}>
-                                  {c.title} — {c.sectionOrPage}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          <div
-                            className={`text-xs ${
-                              m.role === "assistant"
-                                ? "text-neutral-300"
-                                : "text-neutral-200"
-                            } mt-2 text-right`}
-                          >
-                            {new Date(messagesTimestamp(m)).toLocaleTimeString(
+                        <div className="flex flex-col">
+                          <div className={`text-xs mb-2 font-medium ${m.role === "assistant" ? "text-white" : "text-black"}`}>
+                            {m.role === "assistant" ? "OmniBot" : "You"} <span className="text-gray-500">| {new Date(messagesTimestamp(m)).toLocaleTimeString(
                               [],
                               { hour: "2-digit", minute: "2-digit" }
+                            )}</span>
+                          </div>
+                          <div
+                            className={`${
+                              m.role === "assistant"
+                                ? "bg-gradient-to-r from-[#132B67] to-[#1052E0] text-white"
+                                : "bg-[#F2F2F7] text-black"
+                            } px-5 py-3 rounded-2xl break-words leading-relaxed`}
+                            style={{ maxWidth: "68%" }}
+                          >
+                            <div className="whitespace-pre-wrap">{m.content}</div>
+                            {m.role === "assistant" && (m as any).citations && (
+                              <div className="mt-2 text-sm text-neutral-300">
+                                {(m as any).citations.map((c: any, i: number) => (
+                                  <div key={i}>
+                                    {c.title} — {c.sectionOrPage}
+                                  </div>
+                                ))}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -581,7 +578,7 @@ export default function Chat() {
 
               {/* Composer Dock */}
               <div
-                className="bg-[#f6f9fc] p-4"
+                className="bg-white p-4"
                 style={{
                   paddingBottom: "calc(1rem + env(safe-area-inset-bottom))",
                 }}
@@ -589,7 +586,7 @@ export default function Chat() {
                 <div className="max-w-4xl mx-auto">
                   <div
                     className="
-                      relative rounded-xl bg-white
+                      relative rounded-xl bg-gray-200
                       shadow-[0_1px_1px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.06)]
                       ring-1 ring-neutral-200/60
                       focus-within:ring-2 focus-within:ring-[#2977BB]/30
@@ -600,9 +597,9 @@ export default function Chat() {
                         ref={taRef}
                         aria-label="Ask me anything"
                         className="
-                          flex-1 resize-none bg-transparent
+                          flex-1 resize-none bg-gray-200
                           px-2 py-3
-                          text-[15px] leading-6
+                          text-[15px] leading-6 text-white
                           placeholder:text-neutral-400
                           focus:outline-none
                           max-h-[192px] min-h-[48px]
@@ -620,13 +617,16 @@ export default function Chat() {
                       <button
                         onClick={isSending ? stopGeneration : sendMessage}
                         disabled={!input.trim() && !isSending}
-                        aria-label={isSending ? "Stop generation" : "Send message"}
+                        aria-label={
+                          isSending ? "Stop generation" : "Send message"
+                        }
                         className={`
                           shrink-0 grid place-items-center
                           w-10 h-10 rounded-full
-                          ${isSending 
-                            ? 'bg-red-500 text-white hover:bg-red-600' 
-                            : 'bg-[#2977BB] text-white hover:bg-[#221D53]'
+                          ${
+                            isSending
+                              ? "bg-red-500 text-white hover:bg-red-600"
+                              : "bg-[#2977BB] text-white hover:bg-[#221D53]"
                           }
                           disabled:opacity-50
                           transition-transform hover:scale-[1.03] active:scale-[0.98]
@@ -641,7 +641,14 @@ export default function Chat() {
                             stroke="currentColor"
                             className="w-5 h-5"
                           >
-                            <rect x="3" y="3" width="18" height="18" rx="2" fill="currentColor" />
+                            <rect
+                              x="3"
+                              y="3"
+                              width="18"
+                              height="18"
+                              rx="2"
+                              fill="currentColor"
+                            />
                           </svg>
                         ) : (
                           <svg
