@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Edit, Trash2 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import type { ChatMessage } from "../types/chat";
 
@@ -78,8 +79,37 @@ export default function Chat() {
 
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const active = sessions.find((s) => s.id === activeSessionId);
+    setTitleDraft(active?.title ?? "");
+  }, [activeSessionId, sessions]);
+
+  function deleteSession(id: string) {
+    setSessions((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      if (next.length === 0) {
+        const seed: Session = {
+          id: uuidv4(),
+          title: "Welcome",
+          createdAt: Date.now(),
+          messages: [],
+        };
+        setActiveSessionId(seed.id);
+        return [seed];
+      }
+      if (activeSessionId === id) {
+        setActiveSessionId(next[0].id);
+      }
+      return next;
+    });
+  }
 
   function messagesTimestamp(m: ChatMessage) {
     return m.createdAt ?? Date.now();
@@ -133,7 +163,6 @@ export default function Chat() {
         id: uuidv4(),
         role: "assistant",
         content: `Echo: ${userMsg.content}`,
-        citations: [{ title: "Simulated Policy Doc", sectionOrPage: "pg. 10" }],
         createdAt: Date.now(),
       };
       setSessions((prev) =>
@@ -190,23 +219,34 @@ export default function Chat() {
                 </button>
               </div>
               <div className="flex-1 overflow-auto">
-                <h4 className="text-sm font-semibold mb-3">History</h4>
+                <h4 className="text-sm font-semibold mb-3">Chats</h4>
                 <div className="space-y-2 text-sm text-neutral-600">
                   {sessions.map((s) => (
                     <div
                       key={s.id}
-                      className={`px-2 py-2 rounded-md hover:bg-neutral-50 ${
+                      className={`flex items-center justify-between px-2 py-2 rounded-md hover:bg-neutral-50 ${
                         s.id === activeSessionId ? "bg-neutral-50" : ""
                       }`}
                     >
                       <button
-                        className="text-left w-full"
+                        className="text-left w-full text-sm"
                         onClick={() => setActiveSessionId(s.id)}
                       >
                         {s.title}{" "}
                         <span className="text-xs text-neutral-400">
                           {new Date(s.createdAt).toLocaleDateString()}
                         </span>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSessionToDelete(s.id);
+                          setShowDeleteModal(true);
+                        }}
+                        className="ml-2 shrink-0 text-neutral-400 hover:text-red-600 focus:outline-none"
+                        aria-label={`Delete ${s.title}`}
+                      >
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   ))}
@@ -221,9 +261,48 @@ export default function Chat() {
               {/* Header */}
               <div className="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
                 <div>
-                  <div className="text-lg font-semibold">
-                    {sessions.find((s) => s.id === activeSessionId)?.title ??
-                      "Live Chat"}
+                  <div className="flex items-center gap-3">
+                    {editingTitle ? (
+                      <input
+                        value={titleDraft}
+                        onChange={(e) => setTitleDraft(e.target.value)}
+                        onBlur={() => {
+                          setEditingTitle(false);
+                          setSessions((prev) =>
+                            prev.map((s) =>
+                              s.id === activeSessionId
+                                ? { ...s, title: titleDraft || "New chat" }
+                                : s
+                            )
+                          );
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            setSessions((prev) =>
+                              prev.map((s) =>
+                                s.id === activeSessionId
+                                  ? { ...s, title: titleDraft || "New chat" }
+                                  : s
+                              )
+                            );
+                            setEditingTitle(false);
+                          }
+                        }}
+                        className="border-b border-neutral-200 text-lg font-semibold focus:outline-none"
+                      />
+                    ) : (
+                      <div className="text-lg font-semibold">
+                        {sessions.find((s) => s.id === activeSessionId)
+                          ?.title ?? "Live Chat"}
+                      </div>
+                    )}
+                    <button
+                      onClick={() => setEditingTitle((v) => !v)}
+                      className="text-neutral-400 hover:text-neutral-600 focus:outline-none"
+                      aria-label="Edit session title"
+                    >
+                      <Edit size={16} />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -369,6 +448,33 @@ export default function Chat() {
           </section>
         </div>
       </main>
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-sm mx-4">
+            <p className="text-lg font-semibold mb-4">Delete Chat</p>
+            <p className="text-neutral-600 mb-6">Are you sure you want to delete this chat? This action cannot be undone.</p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (sessionToDelete) {
+                    deleteSession(sessionToDelete);
+                  }
+                  setShowDeleteModal(false);
+                }}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,23 +3,36 @@
 @tailwind utilities;
 
 @font-face {
-  font-family: 'OmniBSIC';
-  src: url('/src/assets/fonts/OmniBSIC.ttf') format('truetype');
+  font-family: "OmniBSIC";
+  src: url("/src/assets/fonts/OmniBSIC.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
-  font-family: 'OmniBSIC Black';
-  src: url('/src/assets/fonts/OmniBSIC Black.ttf') format('truetype');
+  font-family: "OmniBSIC Black";
+  src: url("/src/assets/fonts/OmniBSIC Black.ttf") format("truetype");
   font-weight: 900;
   font-style: normal;
   font-display: swap;
 }
 
-body { font-family: 'OmniBSIC', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
-.omni-title { font-family: 'OmniBSIC Black', 'OmniBSIC', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
+body {
+  font-family: "OmniBSIC", system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial;
+}
+.omni-title {
+  font-family: "OmniBSIC Black", "OmniBSIC", system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
 
-:root { --safe-bottom: env(safe-area-inset-bottom, 0px); }
-.safe-area-inset-b { padding-bottom: var(--safe-bottom); }
-.reduce-motion * { transition: none !important; animation: none !important; }
+:root {
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+.safe-area-inset-b {
+  padding-bottom: var(--safe-bottom);
+}
+.reduce-motion * {
+  transition: none !important;
+  animation: none !important;
+}
