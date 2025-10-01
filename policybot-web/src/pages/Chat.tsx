@@ -475,7 +475,9 @@ export default function Chat() {
                       <div
                         key={m.id}
                         className={`relative flex ${
-                          m.role === "assistant" ? "justify-start" : "justify-end"
+                          m.role === "assistant"
+                            ? "justify-start"
+                            : "justify-end"
                         } w-full`}
                       >
                         {/* Avatar (ABSOLUTE) */}
@@ -496,7 +498,9 @@ export default function Chat() {
                         {/* Content column (RESERVES space for avatar) */}
                         <div
                           className={`flex flex-col ${
-                            m.role === "assistant" ? "items-start pl-12" : "items-end pr-12"
+                            m.role === "assistant"
+                              ? "items-start pl-12"
+                              : "items-end pr-12"
                           } w-full`}
                         >
                           {/* meta (name | time) */}
@@ -508,7 +512,9 @@ export default function Chat() {
                             {m.role === "assistant" ? "OmniBot" : "You"}{" "}
                             <span className="text-gray-500">
                               |{" "}
-                              {new Date(messagesTimestamp(m)).toLocaleTimeString([], {
+                              {new Date(
+                                messagesTimestamp(m)
+                              ).toLocaleTimeString([], {
                                 hour: "2-digit",
                                 minute: "2-digit",
                               })}
@@ -539,11 +545,13 @@ export default function Chat() {
 
                             {m.role === "assistant" && (m as any).citations && (
                               <div className="mt-2 text-sm text-neutral-300">
-                                {(m as any).citations.map((c: any, i: number) => (
-                                  <div key={i}>
-                                    {c.title} — {c.sectionOrPage}
-                                  </div>
-                                ))}
+                                {(m as any).citations.map(
+                                  (c: any, i: number) => (
+                                    <div key={i}>
+                                      {c.title} — {c.sectionOrPage}
+                                    </div>
+                                  )
+                                )}
                               </div>
                             )}
                           </div>
