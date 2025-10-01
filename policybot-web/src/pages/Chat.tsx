@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Edit, Trash2, User, Bot } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
+import ReactMarkdown from 'react-markdown';
 import type { ChatMessage } from "../types/chat";
 
 const STORAGE_KEY = "policybot:state";
@@ -211,6 +212,9 @@ export default function Chat() {
           : s
       )
     );
+    // ensure the view scrolls to the new assistant placeholder (loader)
+    // use a short timeout to allow React to render the new DOM node first
+    setTimeout(scrollToBottom, 50);
 
     const messages = [
       { role: "system", content: "You are OmniBot, a helpful assistant." },
@@ -533,17 +537,25 @@ export default function Chat() {
                             px-4 py-2.5 rounded-2xl leading-relaxed inline-block
                             min-w-[5ch] sm:min-w-[7ch]`}
                           >
-                            <div
-                              className="
-                                whitespace-pre-wrap break-words
-                                [overflow-wrap:anywhere]
-                                [hyphens:auto]
-                              "
-                            >
-                              {m.content}
-                            </div>
-
-                            {m.role === "assistant" && (m as any).citations && (
+                          <div
+                            className="
+                              whitespace-pre-wrap break-words
+                              [overflow-wrap:anywhere]
+                              [hyphens:auto]
+                            "
+                          >
+                            {m.content.trim() === "" ? (
+                              <div className="flex space-x-1 justify-center py-2">
+                                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+                                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                              </div>
+                            ) : (
+                              <ReactMarkdown>
+                                {m.content}
+                              </ReactMarkdown>
+                            )}
+                          </div>                            {m.role === "assistant" && (m as any).citations && (
                               <div className="mt-2 text-sm text-neutral-300">
                                 {(m as any).citations.map(
                                   (c: any, i: number) => (
