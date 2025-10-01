@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Edit, Trash2 } from "lucide-react";
+import { Edit, Trash2, User, Bot } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import type { ChatMessage } from "../types/chat";
 
@@ -77,6 +77,7 @@ export default function Chat() {
   const listRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // reduced motion
   useEffect(() => {
     const reduced = window.matchMedia(
       "(prefers-reduced-motion: reduce)"
@@ -108,13 +109,7 @@ export default function Chat() {
     return m.createdAt ?? Date.now();
   }
 
-  useEffect(() => {
-    const reduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)"
-    ).matches;
-    if (reduced) document.documentElement.classList.add("reduce-motion");
-  }, []);
-
+  // persist (keep last 20 msgs per session)
   useEffect(() => {
     try {
       const persist = {
@@ -128,29 +123,26 @@ export default function Chat() {
     } catch {}
   }, [sessions, activeSessionId]);
 
+  // jump to bottom when switching sessions
   useEffect(() => {
     scrollToBottom();
   }, [activeSessionId]);
 
-  // Scroll detection for scroll-to-bottom button
+  // show/hide scroll-to-bottom
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
-
     const handleScroll = () => {
       const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
       setShowScrollToBottom(!isAtBottom);
     };
-
     el.addEventListener("scroll", handleScroll);
     return () => el.removeEventListener("scroll", handleScroll);
   }, []);
 
   function scrollToBottom() {
     const el = listRef.current;
-    if (el) {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    }
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }
 
   function stopGeneration() {
@@ -186,18 +178,16 @@ export default function Chat() {
       s.id === activeSessionId ? { ...s, messages: nextMessages } : s
     );
 
-    // Auto-rename chat based on first user input
+    // auto-rename on first user msg
     let updatedSessions = nextSessions;
     const currentSession = nextSessions.find((s) => s.id === activeSessionId);
     if (currentSession && currentSession.title === "New chat") {
-      const isFirstUserMessage = currentSession.messages.length === 1; // Only the user message we just added
-
+      const isFirstUserMessage = currentSession.messages.length === 1;
       if (isFirstUserMessage) {
         const generatedTitle =
           input.trim().length > 50
             ? input.trim().substring(0, 47) + "..."
             : input.trim();
-
         updatedSessions = nextSessions.map((s) =>
           s.id === activeSessionId ? { ...s, title: generatedTitle } : s
         );
@@ -206,6 +196,21 @@ export default function Chat() {
 
     setSessions(updatedSessions);
     setInput("");
+
+    const reply: ChatMessage = {
+      id: uuidv4(),
+      role: "assistant",
+      content: "",
+      createdAt: Date.now(),
+    };
+
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSessionId
+          ? { ...s, messages: [...s.messages, reply] }
+          : s
+      )
+    );
 
     const messages = [
       { role: "system", content: "You are OmniBot, a helpful assistant." },
@@ -229,19 +234,6 @@ export default function Chat() {
         const reader = res.body!.getReader();
         const decoder = new TextDecoder();
         let accumulated = "";
-        const reply: ChatMessage = {
-          id: uuidv4(),
-          role: "assistant",
-          content: "",
-          createdAt: Date.now(),
-        };
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === activeSessionId
-              ? { ...s, messages: [...s.messages, reply] }
-              : s
-          )
-        );
         scrollToBottom();
         try {
           while (true) {
@@ -271,57 +263,47 @@ export default function Chat() {
                     );
                   }
                 } catch {
-                  // ignore partial JSON
+                  // ignore partial JSON during streaming
                 }
               }
             }
           }
         } catch (err) {
-          if (err instanceof Error && err.name === "AbortError") {
-            // Generation was stopped by user
-            console.log("Generation stopped by user");
-          } else {
-            console.error("Streaming error:", err);
-            setSessions((prev) =>
-              prev.map((s) =>
-                s.id === activeSessionId
-                  ? {
-                      ...s,
-                      messages: s.messages.map((m) =>
-                        m.id === reply.id
-                          ? { ...m, content: `Echo: ${userMsg.content}` }
-                          : m
-                      ),
-                    }
-                  : s
-              )
-            );
-          }
+          console.error("Streaming error:", err);
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id === activeSessionId
+                ? {
+                    ...s,
+                    messages: s.messages.map((m) =>
+                      m.id === reply.id
+                        ? { ...m, content: `Echo: ${userMsg.content}` }
+                        : m
+                    ),
+                  }
+                : s
+            )
+          );
         } finally {
           setIsSending(false);
           abortControllerRef.current = null;
         }
       })
       .catch((err) => {
-        if (err instanceof Error && err.name === "AbortError") {
-          // Generation was stopped by user
-          console.log("Generation stopped by user");
-        } else {
-          console.error("Ollama error:", err);
-          const reply: ChatMessage = {
-            id: uuidv4(),
-            role: "assistant",
-            content: `Echo: ${userMsg.content}`,
-            createdAt: Date.now(),
-          };
-          setSessions((prev) =>
-            prev.map((s) =>
-              s.id === activeSessionId
-                ? { ...s, messages: [...s.messages, reply] }
-                : s
-            )
-          );
-        }
+        console.error("Ollama error:", err);
+        const fallback: ChatMessage = {
+          id: uuidv4(),
+          role: "assistant",
+          content: `Echo: ${userMsg.content}`,
+          createdAt: Date.now(),
+        };
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === activeSessionId
+              ? { ...s, messages: [...s.messages, fallback] }
+              : s
+          )
+        );
         setIsSending(false);
         abortControllerRef.current = null;
       });
@@ -367,7 +349,7 @@ export default function Chat() {
                 </div>
                 <button
                   onClick={newChat}
-                  className="mt-3 w-full bg-[#2977BB] text-white py-2 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2977BB]"
+                  className="mt-3 w-full bg-gradient-to-r from-[#132B67] to-[#1052E0] text-white py-2 rounded-md hover:from-[#0f1e4a] hover:to-[#0c4a9e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2977BB]"
                 >
                   New Chat
                 </button>
@@ -467,7 +449,7 @@ export default function Chat() {
           {/* Chat */}
           <section className="lg:col-span-9 lg:col-start-4">
             {/* Header */}
-            <div className="bg-[#2977BB] text-white rounded-t-2xl px-6 py-4 flex items-center justify-between">
+            <div className="bg-white text-gray-500 rounded-t-2xl px-6 py-4 flex items-center justify-between">
               <div className="text-lg font-semibold">
                 {sessions.find((s) => s.id === activeSessionId)?.title ??
                   "New chat"}
@@ -481,13 +463,6 @@ export default function Chat() {
                 className="relative overflow-y-auto p-6 pb-32 overscroll-contain"
                 ref={listRef}
                 aria-live="polite"
-                // OPTIONAL masked fade (keeps content interactive):
-                // style={{
-                //   WebkitMaskImage:
-                //     "linear-gradient(to bottom, black 85%, transparent 100%)",
-                //   maskImage:
-                //     "linear-gradient(to bottom, black 85%, transparent 100%)",
-                // }}
               >
                 <div className="space-y-6">
                   {(() => {
@@ -495,38 +470,73 @@ export default function Chat() {
                       sessions.find((s) => s.id === activeSessionId) ??
                       sessions[0];
                     if (!active) return null;
+
                     return active.messages.map((m) => (
                       <div
                         key={m.id}
-                        className={`flex ${
-                          m.role === "assistant"
-                            ? "justify-start"
-                            : "justify-end"
+                        className={`relative flex ${
+                          m.role === "assistant" ? "justify-start" : "justify-end"
                         } w-full`}
                       >
-                        {m.role === "assistant" && (
-                          <div className="flex items-start mr-3">
-                            <div className="w-8 h-8 rounded-full bg-[#f0f4ff] flex items-center justify-center text-[#2977BB] font-semibold">
-                              AI
+                        {/* Avatar (ABSOLUTE) */}
+                        {m.role === "assistant" ? (
+                          <div className="absolute left-0 top-6 translate-y-0">
+                            <div className="w-8 h-8 rounded-full bg-[#f0f4ff] flex items-center justify-center text-[#2977BB]">
+                              <Bot size={16} />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="absolute right-0 top-6 translate-y-0">
+                            <div className="w-8 h-8 rounded-full bg-[#2977BB] text-white flex items-center justify-center">
+                              <User size={16} />
                             </div>
                           </div>
                         )}
-                        <div className="flex flex-col">
-                          <div className={`text-xs mb-2 font-medium ${m.role === "assistant" ? "text-white" : "text-black"}`}>
-                            {m.role === "assistant" ? "OmniBot" : "You"} <span className="text-gray-500">| {new Date(messagesTimestamp(m)).toLocaleTimeString(
-                              [],
-                              { hour: "2-digit", minute: "2-digit" }
-                            )}</span>
+
+                        {/* Content column (RESERVES space for avatar) */}
+                        <div
+                          className={`flex flex-col ${
+                            m.role === "assistant" ? "items-start pl-12" : "items-end pr-12"
+                          } w-full`}
+                        >
+                          {/* meta (name | time) */}
+                          <div
+                            className={`text-xs mb-2 font-medium text-black ${
+                              m.role === "user" ? "text-right" : ""
+                            }`}
+                          >
+                            {m.role === "assistant" ? "OmniBot" : "You"}{" "}
+                            <span className="text-gray-500">
+                              |{" "}
+                              {new Date(messagesTimestamp(m)).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
                           </div>
+
+                          {/* bubble */}
                           <div
                             className={`${
                               m.role === "assistant"
-                                ? "bg-gradient-to-r from-[#132B67] to-[#1052E0] text-white"
-                                : "bg-[#F2F2F7] text-black"
-                            } px-5 py-3 rounded-2xl break-words leading-relaxed`}
-                            style={{ maxWidth: "68%" }}
+                                ? // Assistant a bit narrower for readability
+                                  "bg-gradient-to-r from-[#132B67] to-[#1052E0] text-white max-w-[85%] md:max-w-[65%]"
+                                : // User can be wider; true width no longer collides with avatar
+                                  "bg-[#F2F2F7] text-black max-w-[95%] md:max-w-[80%]"
+                            }
+                            px-4 py-2.5 rounded-2xl leading-relaxed inline-block
+                            min-w-[5ch] sm:min-w-[7ch]`}
                           >
-                            <div className="whitespace-pre-wrap">{m.content}</div>
+                            <div
+                              className="
+                                whitespace-pre-wrap break-words
+                                [overflow-wrap:anywhere]
+                                [hyphens:auto]
+                              "
+                            >
+                              {m.content}
+                            </div>
+
                             {m.role === "assistant" && (m as any).citations && (
                               <div className="mt-2 text-sm text-neutral-300">
                                 {(m as any).citations.map((c: any, i: number) => (
@@ -538,25 +548,17 @@ export default function Chat() {
                             )}
                           </div>
                         </div>
-                        {m.role === "user" && (
-                          <div className="flex items-start ml-3">
-                            <div className="w-8 h-8 rounded-full bg-[#2977BB] text-white flex items-center justify-center font-semibold">
-                              Y
-                            </div>
-                          </div>
-                        )}
                       </div>
                     ));
                   })()}
                 </div>
-                {/* Removed the absolute white gradient overlay that caused the strip */}
               </div>
 
               {/* Scroll to bottom button */}
               {showScrollToBottom && (
                 <button
                   onClick={scrollToBottom}
-                  className="absolute bottom-4 right-4 bg-[#2977BB] text-white p-3 rounded-full shadow-lg hover:bg-[#221D53] transition-colors focus:outline-none focus:ring-2 focus:ring-[#2977BB]/40"
+                  className="absolute bottom-4 right-4 bg-gradient-to-r from-[#132B67] to-[#1052E0] text-white p-3 rounded-md shadow-lg hover:from-[#0f1e4a] hover:to-[#0c4a9e] transition-colors focus:outline-none focus:ring-2 focus:ring-[#2977BB]/40"
                   aria-label="Scroll to bottom"
                 >
                   <svg
@@ -576,7 +578,7 @@ export default function Chat() {
                 </button>
               )}
 
-              {/* Composer Dock */}
+              {/* Composer */}
               <div
                 className="bg-white p-4"
                 style={{
@@ -599,10 +601,10 @@ export default function Chat() {
                         className="
                           flex-1 resize-none bg-gray-200
                           px-2 py-3
-                          text-[15px] leading-6 text-white
+                          text-[15px] leading-6 text-black
                           placeholder:text-neutral-400
                           focus:outline-none
-                          max-h-[192px] min-h-[48px]
+                          max-h-[192px] min-h-[40px]
                         "
                         placeholder="Ask me anything…"
                         value={input}
@@ -622,11 +624,11 @@ export default function Chat() {
                         }
                         className={`
                           shrink-0 grid place-items-center
-                          w-10 h-10 rounded-full
+                          w-10 h-10 rounded-md
                           ${
                             isSending
-                              ? "bg-red-500 text-white hover:bg-red-600"
-                              : "bg-[#2977BB] text-white hover:bg-[#221D53]"
+                              ? "bg-gradient-to-r from-[#132B67] to-[#1052E0] text-white hover:from-[#0f1e4a] hover:to-[#0c4a9e]"
+                              : "bg-gradient-to-r from-[#132B67] to-[#1052E0] text-white hover:from-[#0f1e4a] hover:to-[#0c4a9e]"
                           }
                           disabled:opacity-50
                           transition-transform hover:scale-[1.03] active:scale-[0.98]
@@ -676,6 +678,7 @@ export default function Chat() {
         </div>
       </main>
 
+      {/* Delete modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg max-w-sm mx-4">
@@ -693,9 +696,7 @@ export default function Chat() {
               </button>
               <button
                 onClick={() => {
-                  if (sessionToDelete) {
-                    deleteSession(sessionToDelete);
-                  }
+                  if (sessionToDelete) deleteSession(sessionToDelete);
                   setShowDeleteModal(false);
                 }}
                 className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
