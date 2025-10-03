@@ -10,6 +10,9 @@ import type { ChatMessage } from "../types/chat";
 
 const STORAGE_KEY = "policybot:state";
 
+// Simple regex to detect basic math expressions
+const mathRegex = /^\s*[\d\s\+\-\*\/\^\(\)\.\,eE]+\s*$/;
+
 type Session = {
   id: string;
   title: string;
@@ -34,6 +37,60 @@ export default function Chat() {
       content: randomGreeting,
       createdAt: Date.now(),
     };
+  }
+
+  async function calculateExpression(expression: string): Promise<string> {
+    try {
+      const response = await fetch('http://localhost:3001/calculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expression }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        return `The result of ${data.expression} is ${data.result}`;
+      } else {
+        return `Sorry, I couldn't calculate that expression. Error: ${data.error}`;
+      }
+    } catch (error) {
+      console.error('Calculator API error:', error);
+      return 'Sorry, I couldn\'t connect to the calculator service. Please try again.';
+    }
+  }
+
+  async function retrieveDocuments(query: string): Promise<{ content: string; citations: any[] }> {
+    try {
+      const response = await fetch('http://localhost:3002/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+      const data = await response.json();
+      if (data.success && data.documents.length > 0) {
+        const docsText = data.documents.map((doc: any) =>
+          `Document: ${doc.title}\n${doc.content}`
+        ).join('\n\n');
+        return {
+          content: `Retrieved ${data.documents.length} relevant document(s):\n\n${docsText}`,
+          citations: data.documents.map((doc: any) => ({
+            id: doc.id,
+            title: doc.title,
+            type: 'document'
+          }))
+        };
+      } else {
+        return {
+          content: 'No relevant documents found for this query.',
+          citations: []
+        };
+      }
+    } catch (error) {
+      console.error('Document retrieval error:', error);
+      return {
+        content: 'Sorry, I couldn\'t retrieve relevant documents. Please try again.',
+        citations: []
+      };
+    }
   }
 
   const [sessions, setSessions] = useState<Session[]>(() => {
@@ -195,6 +252,68 @@ export default function Chat() {
   async function sendMessage() {
     if (!input.trim() || isSending || !activeSessionId) return;
 
+    // Check if input is a math expression
+    if (mathRegex.test(input.trim())) {
+      setIsSending(true);
+      const result = await calculateExpression(input.trim());
+
+      const userMsg: ChatMessage = {
+        id: uuidv4(),
+        role: "user",
+        content: input.trim(),
+        createdAt: Date.now(),
+      };
+
+      const active = sessions.find((s) => s.id === activeSessionId);
+      if (!active) {
+        setIsSending(false);
+        return;
+      }
+
+      const nextMessages = [...active.messages, userMsg];
+      const nextSessions = sessions.map((s) =>
+        s.id === activeSessionId ? { ...s, messages: nextMessages } : s
+      );
+
+      // auto-rename on first user msg
+      let updatedSessions = nextSessions;
+      const currentSession = nextSessions.find((s) => s.id === activeSessionId);
+      if (currentSession && currentSession.title === "New chat") {
+        const isFirstUserMessage = currentSession.messages.length === 1;
+        if (isFirstUserMessage) {
+          const generatedTitle =
+            input.trim().length > 50
+              ? input.trim().substring(0, 47) + "..."
+              : input.trim();
+          updatedSessions = nextSessions.map((s) =>
+            s.id === activeSessionId ? { ...s, title: generatedTitle } : s
+          );
+        }
+      }
+
+      setSessions(updatedSessions);
+      setInput("");
+
+      const reply: ChatMessage = {
+        id: uuidv4(),
+        role: "assistant",
+        content: result,
+        toolType: "calculator",
+        createdAt: Date.now(),
+      };
+
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSessionId
+            ? { ...s, messages: [...s.messages, reply] }
+            : s
+        )
+      );
+
+      setIsSending(false);
+      return;
+    }
+
     setIsSending(true);
     abortControllerRef.current = new AbortController();
 
@@ -257,7 +376,7 @@ export default function Chat() {
       {
         role: "system",
         content:
-          'You are Awal, a professional eBusiness assistant. You must strictly discuss only eCommerce, online marketing, digital business strategies, and related policies.  \nUnder no circumstances should you answer questions or provide information on topics outside eBusiness and related policies.  \nIf a user asks about anything outside this scope, reply firmly and politely:  \n"I\'m sorry, I can only assist with eBusiness-related topics, including eCommerce, marketing, digital business, and policies. Please ask questions related to these areas."  \nDo not provide any additional information or try to connect off-topic subjects to eBusiness. Always maintain a friendly and professional tone while strictly enforcing this topic restriction.',
+          'You are Awal, a professional eBusiness assistant. You must strictly discuss only eCommerce, online marketing, digital business strategies, and related policies.  \nUnder no circumstances should you answer questions or provide information on topics outside eBusiness and related policies.  \nIf a user asks about anything outside this scope, reply firmly and politely:  \n"I\'m sorry, I can only assist with eBusiness-related topics, including eCommerce, marketing, digital business, and policies. Please ask questions related to these areas."  \nDo not provide any additional information or try to connect off-topic subjects to eBusiness. Always maintain a friendly and professional tone while strictly enforcing this topic restriction.  \n\nYou have access to a calculator tool for mathematical computations and a document retrieval tool for accessing eBusiness knowledge. When users ask questions that would benefit from specific eBusiness information, use the retrieve_documents function to search for relevant content. Always use retrieved documents to provide accurate, detailed answers. For calculations, use the calculate function with the exact mathematical expression.  \n\nWhen providing information from retrieved documents, provide the main answer first. Then, on a separate line, clearly indicate the source like this:  \nSource: Document titled "Digital Marketing Strategies"  \n\nThis helps users understand where the information comes from and keeps citations visually distinct from the main answer.',
       },
       ...nextMessages.slice(-10).map((m) => ({
         role: m.role,
@@ -273,6 +392,39 @@ export default function Chat() {
           model: "huihui_ai/nemotron-v1-abliterated",
           messages,
           stream: true,
+          tools: [{
+            type: "function",
+            function: {
+              name: "calculate",
+              description: "Evaluate a mathematical expression safely and return the result",
+              parameters: {
+                type: "object",
+                properties: {
+                  expression: {
+                    type: "string",
+                    description: "The mathematical expression to calculate, e.g., '2 + 3 * 4' or '(10 + 5) / 3'"
+                  }
+                },
+                required: ["expression"]
+              }
+            }
+          }, {
+            type: "function",
+            function: {
+              name: "retrieve_documents",
+              description: "Search for relevant eBusiness documents and information based on a query",
+              parameters: {
+                type: "object",
+                properties: {
+                  query: {
+                    type: "string",
+                    description: "The search query for finding relevant eBusiness information"
+                  }
+                },
+                required: ["query"]
+              }
+            }
+          }],
         }),
         signal: abortControllerRef.current!.signal,
       });
@@ -280,6 +432,7 @@ export default function Chat() {
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let accumulated = "";
+      let toolCalls: any[] = [];
       scrollToBottom();
 
       try {
@@ -309,8 +462,108 @@ export default function Chat() {
                     )
                   );
                 }
+                if (data.message?.tool_calls) {
+                  toolCalls = data.message.tool_calls;
+                }
               } catch {
                 // ignore partial JSON during streaming
+              }
+            }
+          }
+        }
+
+        // Handle tool calls after streaming is complete
+        if (toolCalls.length > 0) {
+          for (const toolCall of toolCalls) {
+            let toolResult = '';
+            let toolCitations: any[] = [];
+            let toolType = '';
+            
+            if (toolCall.function?.name === 'calculate') {
+              const expression = toolCall.function.arguments?.expression;
+              if (expression) {
+                toolResult = await calculateExpression(expression);
+                toolType = 'calculator';
+              }
+            } else if (toolCall.function?.name === 'retrieve_documents') {
+              const query = toolCall.function.arguments?.query;
+              if (query) {
+                const ragResult = await retrieveDocuments(query);
+                toolResult = ragResult.content;
+                toolCitations = ragResult.citations;
+                toolType = 'rag';
+              }
+            }
+            
+            if (toolResult) {
+              // Add tool result message to conversation
+              const toolMessage = {
+                role: "tool",
+                content: toolResult,
+                tool_call_id: toolCall.id,
+                citations: toolCitations,
+                toolType: toolType
+              };
+              
+              // Continue conversation with tool result
+              const messagesWithTool = [...messages, 
+                { role: "assistant", content: accumulated, tool_calls: toolCalls },
+                toolMessage
+              ];
+              
+              // Make another API call to get the final response
+              const followUpRes = await fetch("http://localhost:11434/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  model: "huihui_ai/nemotron-v1-abliterated",
+                  messages: messagesWithTool,
+                  stream: true,
+                }),
+              });
+              
+              const followUpReader = followUpRes.body!.getReader();
+              const followUpDecoder = new TextDecoder();
+              let followUpAccumulated = accumulated;
+              
+              try {
+                while (true) {
+                  const { done, value } = await followUpReader.read();
+                  if (done) break;
+                  const chunk = followUpDecoder.decode(value, { stream: true });
+                  const lines = chunk.split("\n");
+                  for (const line of lines) {
+                    if (line.trim()) {
+                      try {
+                        const data = JSON.parse(line);
+                        if (data.message?.content) {
+                          followUpAccumulated += data.message.content;
+                          setSessions((prev) =>
+                            prev.map((s) =>
+                              s.id === activeSessionId
+                                ? {
+                                    ...s,
+                                    messages: s.messages.map((m) =>
+                                      m.id === reply.id
+                                        ? {
+                                            ...m,
+                                            content: followUpAccumulated,
+                                            toolType: toolType,
+                                            citations: toolCitations
+                                          }
+                                        : m
+                                    ),
+                                  }
+                                : s
+                            )
+                          );
+                        }
+                      } catch {}
+                    }
+                  }
+                }
+              } catch (followUpErr) {
+                console.error("Follow-up streaming error:", followUpErr);
               }
             }
           }
@@ -558,11 +811,23 @@ export default function Chat() {
                         >
                           {/* Meta */}
                           <div
-                            className={`text-xs mb-2 font-medium text-black ${
-                              m.role === "user" ? "text-right" : ""
+                            className={`text-xs mb-2 font-medium text-black flex items-center gap-2 ${
+                              m.role === "user" ? "text-right justify-end" : ""
                             }`}
                           >
-                            {m.role === "assistant" ? "Awal" : "You"}{" "}
+                            <div className="flex items-center gap-1">
+                              {m.role === "assistant" ? "Awal" : "You"}
+                              {m.toolType === "calculator" && (
+                                <span className="inline-flex items-center justify-center w-4 h-4 bg-orange-500 text-white rounded-full text-xs" title="Calculator used">
+                                  🧮
+                                </span>
+                              )}
+                              {m.toolType === "rag" && (
+                                <span className="inline-flex items-center justify-center w-4 h-4 bg-green-500 text-white rounded-full text-xs" title="Knowledge base used">
+                                  📚
+                                </span>
+                              )}
+                            </div>
                             <span className="text-gray-500">
                               |{" "}
                               {new Date(
@@ -600,59 +865,128 @@ export default function Chat() {
                                 </div>
                               ) : (
                                 <div className="markdown">
-                                  <ReactMarkdown
-                                    remarkPlugins={[
-                                      remarkMath,
-                                      [remarkGfm, { singleTilde: false }],
-                                    ]}
-                                    rehypePlugins={[rehypeKatex]}
-                                    components={{
-                                      ol: ({ children, ...props }) => (
-                                        <ol
-                                          style={{
-                                            paddingLeft: "1.5rem",
-                                            margin: "0.5rem 0",
-                                          }}
-                                          {...props}
-                                        >
-                                          {children}
-                                        </ol>
-                                      ),
-                                      ul: ({ children, ...props }) => (
-                                        <ul
-                                          style={{
-                                            paddingLeft: "1.5rem",
-                                            margin: "0.5rem 0",
-                                          }}
-                                          {...props}
-                                        >
-                                          {children}
-                                        </ul>
-                                      ),
-                                      li: ({ children, ...props }) => (
-                                        <li
-                                          style={{ marginBottom: "0.25rem" }}
-                                          {...props}
-                                        >
-                                          {children}
-                                        </li>
-                                      ),
-                                    }}
-                                  >
-                                    {m.content}
-                                  </ReactMarkdown>
+                                  {(() => {
+                                    // Parse content to separate main answer from citations
+                                    const content = m.content;
+                                    const sourceMatch = content.match(/\nSource: (.+)$/);
+                                    
+                                    if (sourceMatch) {
+                                      const mainContent = content.replace(/\nSource: .+$/, '');
+                                      const sourceText = sourceMatch[1];
+                                      
+                                      return (
+                                        <>
+                                          <ReactMarkdown
+                                            remarkPlugins={[
+                                              remarkMath,
+                                              [remarkGfm, { singleTilde: false }],
+                                            ]}
+                                            rehypePlugins={[rehypeKatex]}
+                                            components={{
+                                              ol: ({ children, ...props }) => (
+                                                <ol
+                                                  style={{
+                                                    paddingLeft: "1.5rem",
+                                                    margin: "0.5rem 0",
+                                                  }}
+                                                  {...props}
+                                                >
+                                                  {children}
+                                                </ol>
+                                              ),
+                                              ul: ({ children, ...props }) => (
+                                                <ul
+                                                  style={{
+                                                    paddingLeft: "1.5rem",
+                                                    margin: "0.5rem 0",
+                                                  }}
+                                                  {...props}
+                                                >
+                                                  {children}
+                                                </ul>
+                                              ),
+                                              li: ({ children, ...props }) => (
+                                                <li
+                                                  style={{ marginBottom: "0.25rem" }}
+                                                  {...props}
+                                                >
+                                                  {children}
+                                                </li>
+                                              ),
+                                            }}
+                                          >
+                                            {mainContent}
+                                          </ReactMarkdown>
+                                          <div className="mt-3 pt-2 border-t border-white/20">
+                                            <div className="text-xs text-white/70 italic">
+                                              Source: {sourceText}
+                                            </div>
+                                          </div>
+                                        </>
+                                      );
+                                    }
+                                    
+                                    return (
+                                      <ReactMarkdown
+                                        remarkPlugins={[
+                                          remarkMath,
+                                          [remarkGfm, { singleTilde: false }],
+                                        ]}
+                                        rehypePlugins={[rehypeKatex]}
+                                        components={{
+                                          ol: ({ children, ...props }) => (
+                                            <ol
+                                              style={{
+                                                paddingLeft: "1.5rem",
+                                                margin: "0.5rem 0",
+                                              }}
+                                              {...props}
+                                            >
+                                              {children}
+                                            </ol>
+                                          ),
+                                          ul: ({ children, ...props }) => (
+                                            <ul
+                                              style={{
+                                                paddingLeft: "1.5rem",
+                                                margin: "0.5rem 0",
+                                              }}
+                                              {...props}
+                                            >
+                                              {children}
+                                            </ul>
+                                          ),
+                                          li: ({ children, ...props }) => (
+                                            <li
+                                              style={{ marginBottom: "0.25rem" }}
+                                              {...props}
+                                            >
+                                              {children}
+                                            </li>
+                                          ),
+                                        }}
+                                      >
+                                        {m.content}
+                                      </ReactMarkdown>
+                                    );
+                                  })()}
                                 </div>
                               )}
                             </div>
-                            {m.role === "assistant" && (m as any).citations && (
-                              <div className="mt-2 text-sm text-neutral-300">
-                                {(m as any).citations.map(
-                                  (c: any, i: number) => (
-                                    <div key={i}>
-                                      {c.title} — {c.sectionOrPage}
-                                    </div>
-                                  )
-                                )}
+                            {m.role === "assistant" && m.citations && m.citations.length > 0 && !m.content.includes('Source:') && (
+                              <div className="mt-3 pt-2 border-t border-white/20">
+                                <div className="text-xs text-white/70 mb-1">Sources:</div>
+                                <div className="flex flex-wrap gap-1">
+                                  {m.citations.map((c, i) => (
+                                    <span
+                                      key={i}
+                                      className="inline-flex items-center px-2 py-1 bg-white/10 text-white/90 rounded-md text-xs"
+                                      title={c.type === 'document' ? 'From knowledge base' : 'Source'}
+                                    >
+                                      📄 {c.title}
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
                             )}
                           </div>

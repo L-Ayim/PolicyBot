@@ -1,9 +1,10 @@
 export type Role = "user" | "assistant";
-export type Citation = { title: string; sectionOrPage: string };
+export type Citation = { id?: number; title: string; type?: string };
 export type ChatMessage = {
   id: string;
   role: Role;
   content: string;
   citations?: Citation[];
+  toolType?: string;
   createdAt?: number;
 };
