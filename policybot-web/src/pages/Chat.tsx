@@ -26,7 +26,8 @@ export default function Chat() {
       "Greetings! I'm Awal, your eBusiness assistant. What eBusiness questions do you have for me?",
       "Hello! I'm Awal, ready to assist with your eBusiness inquiries. How may I help you?",
     ];
-    const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+    const randomGreeting =
+      greetings[Math.floor(Math.random() * greetings.length)];
     return {
       id: uuidv4(),
       role: "assistant",
@@ -43,7 +44,10 @@ export default function Chat() {
         if (Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
           // Ensure all loaded sessions have at least one message (greeting) if they're new/empty
           const sessionsWithGreetings = parsed.sessions.map((s: any) => {
-            if ((!s.messages || s.messages.length === 0) && s.title === "New chat") {
+            if (
+              (!s.messages || s.messages.length === 0) &&
+              s.title === "New chat"
+            ) {
               return {
                 ...s,
                 messages: [createGreetingMessage()],
@@ -253,7 +257,7 @@ export default function Chat() {
       {
         role: "system",
         content:
-          "You are Awal, a professional eBusiness assistant. You must strictly discuss only eCommerce, online marketing, digital business strategies, and related policies.  \nUnder no circumstances should you answer questions or provide information on topics outside eBusiness and related policies.  \nIf a user asks about anything outside this scope, reply firmly and politely:  \n\"I'm sorry, I can only assist with eBusiness-related topics, including eCommerce, marketing, digital business, and policies. Please ask questions related to these areas.\"  \nDo not provide any additional information or try to connect off-topic subjects to eBusiness. Always maintain a friendly and professional tone while strictly enforcing this topic restriction.",
+          'You are Awal, a professional eBusiness assistant. You must strictly discuss only eCommerce, online marketing, digital business strategies, and related policies.  \nUnder no circumstances should you answer questions or provide information on topics outside eBusiness and related policies.  \nIf a user asks about anything outside this scope, reply firmly and politely:  \n"I\'m sorry, I can only assist with eBusiness-related topics, including eCommerce, marketing, digital business, and policies. Please ask questions related to these areas."  \nDo not provide any additional information or try to connect off-topic subjects to eBusiness. Always maintain a friendly and professional tone while strictly enforcing this topic restriction.',
       },
       ...nextMessages.slice(-10).map((m) => ({
         role: m.role,
@@ -597,21 +601,39 @@ export default function Chat() {
                               ) : (
                                 <div className="markdown">
                                   <ReactMarkdown
-                                    remarkPlugins={[remarkMath, [remarkGfm, { singleTilde: false }]]}
+                                    remarkPlugins={[
+                                      remarkMath,
+                                      [remarkGfm, { singleTilde: false }],
+                                    ]}
                                     rehypePlugins={[rehypeKatex]}
                                     components={{
                                       ol: ({ children, ...props }) => (
-                                        <ol style={{ paddingLeft: '1.5rem', margin: '0.5rem 0' }} {...props}>
+                                        <ol
+                                          style={{
+                                            paddingLeft: "1.5rem",
+                                            margin: "0.5rem 0",
+                                          }}
+                                          {...props}
+                                        >
                                           {children}
                                         </ol>
                                       ),
                                       ul: ({ children, ...props }) => (
-                                        <ul style={{ paddingLeft: '1.5rem', margin: '0.5rem 0' }} {...props}>
+                                        <ul
+                                          style={{
+                                            paddingLeft: "1.5rem",
+                                            margin: "0.5rem 0",
+                                          }}
+                                          {...props}
+                                        >
                                           {children}
                                         </ul>
                                       ),
                                       li: ({ children, ...props }) => (
-                                        <li style={{ marginBottom: '0.25rem' }} {...props}>
+                                        <li
+                                          style={{ marginBottom: "0.25rem" }}
+                                          {...props}
+                                        >
                                           {children}
                                         </li>
                                       ),
