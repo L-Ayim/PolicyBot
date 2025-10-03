@@ -20,6 +20,7 @@
 body {
   font-family: "OmniBSIC", system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial;
+  font-size: 80%;
 }
 .omni-title {
   font-family: "OmniBSIC Black", "OmniBSIC", system-ui, -apple-system,
@@ -35,6 +36,53 @@ body {
 .reduce-motion * {
   transition: none !important;
   animation: none !important;
+}
+
+/* Markdown styling */
+.markdown ul,
+.markdown ol {
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.markdown li {
+  margin-bottom: 0.25rem;
+}
+
+.markdown p {
+  margin: 0.5rem 0;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  margin: 0.5rem 0 0.25rem 0;
+  font-weight: 600;
+}
+
+.markdown code {
+  background-color: rgba(0, 0, 0, 0.1);
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+
+.markdown pre {
+  background-color: rgba(0, 0, 0, 0.1);
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.markdown blockquote {
+  border-left: 4px solid #ccc;
+  padding-left: 1rem;
+  margin: 0.5rem 0;
+  font-style: italic;
 }
 
 /* Custom Scrollbar */

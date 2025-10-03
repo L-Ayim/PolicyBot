@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Edit, Trash2, User, Bot } from "lucide-react";
+import { Edit, Trash2, User, Bot, Lightbulb } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import type { ChatMessage } from "../types/chat";
 
 const STORAGE_KEY = "policybot:state";
@@ -154,7 +157,7 @@ export default function Chat() {
     setIsSending(false);
   }
 
-  function sendMessage() {
+  async function sendMessage() {
     if (!input.trim() || isSending || !activeSessionId) return;
 
     setIsSending(true);
@@ -212,68 +215,74 @@ export default function Chat() {
           : s
       )
     );
-    // ensure the view scrolls to the new assistant placeholder (loader)
-    // use a short timeout to allow React to render the new DOM node first
+    // allow React to render new assistant placeholder (loader)
     setTimeout(scrollToBottom, 50);
 
     const messages = [
-      { role: "system", content: "You are OmniBot, a helpful assistant." },
+      {
+        role: "system",
+        content:
+          "You are Awal, a friendly and expert eBusiness assistant. You strictly discuss only eCommerce, online marketing, digital business strategies, and related policies.  \nUnder no circumstances should you discuss any topics outside of eBusiness or policies related to it.  \nIf the user asks about anything else, firmly but politely say:  \n\"I'm sorry, I can only help with eBusiness-related topics. Please ask me about eCommerce, marketing, digital business, or relevant policies.\"  \nAlways maintain a friendly, professional, and helpful tone, but never deviate from eBusiness topics.",
+      },
       ...nextMessages.slice(-10).map((m) => ({
         role: m.role,
         content: m.content,
       })),
     ];
 
-    fetch("http://localhost:11434/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "llama3.2:1b",
-        messages,
-        stream: true,
-      }),
-      signal: abortControllerRef.current.signal,
-    })
-      .then(async (res) => {
-        const reader = res.body!.getReader();
-        const decoder = new TextDecoder();
-        let accumulated = "";
-        scrollToBottom();
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split("\n");
-            for (const line of lines) {
-              if (line.trim()) {
-                try {
-                  const data = JSON.parse(line);
-                  if (data.message?.content) {
-                    accumulated += data.message.content;
-                    setSessions((prev) =>
-                      prev.map((s) =>
-                        s.id === activeSessionId
-                          ? {
-                              ...s,
-                              messages: s.messages.map((m) =>
-                                m.id === reply.id
-                                  ? { ...m, content: accumulated }
-                                  : m
-                              ),
-                            }
-                          : s
-                      )
-                    );
-                  }
-                } catch {
-                  // ignore partial JSON during streaming
+    try {
+      const res = await fetch("http://localhost:11434/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "huihui_ai/nemotron-v1-abliterated",
+          messages,
+          stream: true,
+        }),
+        signal: abortControllerRef.current!.signal,
+      });
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+      scrollToBottom();
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+          for (const line of lines) {
+            if (line.trim()) {
+              try {
+                const data = JSON.parse(line);
+                if (data.message?.content) {
+                  accumulated += data.message.content;
+                  setSessions((prev) =>
+                    prev.map((s) =>
+                      s.id === activeSessionId
+                        ? {
+                            ...s,
+                            messages: s.messages.map((m) =>
+                              m.id === reply.id
+                                ? { ...m, content: accumulated }
+                                : m
+                            ),
+                          }
+                        : s
+                    )
+                  );
                 }
+              } catch {
+                // ignore partial JSON during streaming
               }
             }
           }
-        } catch (err) {
-          console.error("Streaming error:", err);
+        }
+      } catch (err) {
+        console.error("Streaming error:", err);
+        if (!(err instanceof Error) || err.name !== "AbortError") {
           setSessions((prev) =>
             prev.map((s) =>
               s.id === activeSessionId
@@ -281,24 +290,27 @@ export default function Chat() {
                     ...s,
                     messages: s.messages.map((m) =>
                       m.id === reply.id
-                        ? { ...m, content: `Echo: ${userMsg.content}` }
+                        ? {
+                            ...m,
+                            content:
+                              "I'm sorry, I encountered an error while generating a response. Please try again.",
+                          }
                         : m
                     ),
                   }
                 : s
             )
           );
-        } finally {
-          setIsSending(false);
-          abortControllerRef.current = null;
         }
-      })
-      .catch((err) => {
-        console.error("Ollama error:", err);
+      }
+    } catch (err) {
+      console.error("Ollama error:", err);
+      if (!(err instanceof Error) || err.name !== "AbortError") {
         const fallback: ChatMessage = {
           id: uuidv4(),
           role: "assistant",
-          content: `Echo: ${userMsg.content}`,
+          content:
+            "I'm sorry, I couldn't connect to the AI service. Please check your connection and try again.",
           createdAt: Date.now(),
         };
         setSessions((prev) =>
@@ -308,18 +320,34 @@ export default function Chat() {
               : s
           )
         );
-        setIsSending(false);
-        abortControllerRef.current = null;
-      });
+      }
+    } finally {
+      setIsSending(false);
+      abortControllerRef.current = null;
+    }
   }
 
   function newChat() {
     const id = uuidv4();
+    const greetings = [
+      "Hello, I'm Awal, your eBusiness assistant. How may I help you today?",
+      "Hi there! I'm Awal, your dedicated eBusiness assistant. What can I assist you with?",
+      "Welcome! I'm Awal, here to help with all your eBusiness needs. How can I support you today?",
+      "Greetings! I'm Awal, your eBusiness assistant. What eBusiness questions do you have for me?",
+      "Hello! I'm Awal, ready to assist with your eBusiness inquiries. How may I help you?",
+    ];
+    const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+    const greetingMessage: ChatMessage = {
+      id: uuidv4(),
+      role: "assistant",
+      content: randomGreeting,
+      createdAt: Date.now(),
+    };
     const s: Session = {
       id,
       title: "New chat",
       createdAt: Date.now(),
-      messages: [],
+      messages: [greetingMessage],
     };
     setSessions((prev) => [s, ...prev]);
     setActiveSessionId(id);
@@ -347,8 +375,7 @@ export default function Chat() {
                     className="w-8 h-8"
                   />
                   <div className="omni-title">
-                    <span style={{ color: "#2977BB" }}>Omni</span>
-                    <span style={{ color: "#221D53" }}>Bot</span>
+                    <span style={{ color: "#2977BB" }}>Awal</span>
                   </div>
                 </div>
                 <button
@@ -484,7 +511,7 @@ export default function Chat() {
                             : "justify-end"
                         } w-full`}
                       >
-                        {/* Avatar (ABSOLUTE) */}
+                        {/* Avatar */}
                         {m.role === "assistant" ? (
                           <div className="absolute left-0 top-6 translate-y-0">
                             <div className="w-8 h-8 rounded-full bg-[#f0f4ff] flex items-center justify-center text-[#2977BB]">
@@ -499,7 +526,7 @@ export default function Chat() {
                           </div>
                         )}
 
-                        {/* Content column (RESERVES space for avatar) */}
+                        {/* Content */}
                         <div
                           className={`flex flex-col ${
                             m.role === "assistant"
@@ -507,13 +534,13 @@ export default function Chat() {
                               : "items-end pr-12"
                           } w-full`}
                         >
-                          {/* meta (name | time) */}
+                          {/* Meta */}
                           <div
                             className={`text-xs mb-2 font-medium text-black ${
                               m.role === "user" ? "text-right" : ""
                             }`}
                           >
-                            {m.role === "assistant" ? "OmniBot" : "You"}{" "}
+                            {m.role === "assistant" ? "Awal" : "You"}{" "}
                             <span className="text-gray-500">
                               |{" "}
                               {new Date(
@@ -525,37 +552,42 @@ export default function Chat() {
                             </span>
                           </div>
 
-                          {/* bubble */}
+                          {/* Bubble */}
                           <div
                             className={`${
                               m.role === "assistant"
-                                ? // Assistant a bit narrower for readability
-                                  "bg-gradient-to-r from-[#132B67] to-[#1052E0] text-white max-w-[85%] md:max-w-[65%]"
-                                : // User can be wider; true width no longer collides with avatar
-                                  "bg-[#F2F2F7] text-black max-w-[95%] md:max-w-[80%]"
-                            }
-                            px-4 py-2.5 rounded-2xl leading-relaxed inline-block
-                            min-w-[5ch] sm:min-w-[7ch]`}
+                                ? "bg-gradient-to-r from-[#132B67] to-[#1052E0] text-white max-w-[85%] md:max-w-[65%]"
+                                : "bg-[#F2F2F7] text-black max-w-[95%] md:max-w-[80%]"
+                            } px-4 py-2.5 rounded-2xl leading-relaxed inline-block min-w-[5ch] sm:min-w-[7ch]`}
                           >
-                          <div
-                            className="
-                              whitespace-pre-wrap break-words
-                              [overflow-wrap:anywhere]
-                              [hyphens:auto]
-                            "
-                          >
-                            {m.content.trim() === "" ? (
-                              <div className="flex space-x-1 justify-center py-2">
-                                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
-                                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                              </div>
-                            ) : (
-                              <ReactMarkdown>
-                                {m.content}
-                              </ReactMarkdown>
-                            )}
-                          </div>                            {m.role === "assistant" && (m as any).citations && (
+                            <div className="whitespace-pre-wrap break-words [hyphens:auto]">
+                              {m.content.trim() === "" ? (
+                                <div className="flex space-x-1 justify-center py-2">
+                                  <div
+                                    className="w-2 h-2 bg-white rounded-full animate-bounce"
+                                    style={{ animationDelay: "0s" }}
+                                  ></div>
+                                  <div
+                                    className="w-2 h-2 bg-white rounded-full animate-bounce"
+                                    style={{ animationDelay: "0.1s" }}
+                                  ></div>
+                                  <div
+                                    className="w-2 h-2 bg-white rounded-full animate-bounce"
+                                    style={{ animationDelay: "0.2s" }}
+                                  ></div>
+                                </div>
+                              ) : (
+                                <div className="markdown">
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkMath]}
+                                    rehypePlugins={[rehypeKatex]}
+                                  >
+                                    {m.content}
+                                  </ReactMarkdown>
+                                </div>
+                              )}
+                            </div>
+                            {m.role === "assistant" && (m as any).citations && (
                               <div className="mt-2 text-sm text-neutral-300">
                                 {(m as any).citations.map(
                                   (c: any, i: number) => (
@@ -606,26 +638,12 @@ export default function Chat() {
                 }}
               >
                 <div className="max-w-4xl mx-auto">
-                  <div
-                    className="
-                      relative rounded-xl bg-gray-200
-                      shadow-[0_1px_1px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.06)]
-                      ring-1 ring-neutral-200/60
-                      focus-within:ring-2 focus-within:ring-[#2977BB]/30
-                    "
-                  >
+                  <div className="relative rounded-xl bg-gray-200 shadow-[0_1px_1px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.06)] ring-1 ring-neutral-200/60 focus-within:ring-2 focus-within:ring-[#2977BB]/30">
                     <div className="flex items-center gap-2 px-3 py-2">
                       <textarea
                         ref={taRef}
                         aria-label="Ask me anything"
-                        className="
-                          flex-1 resize-none bg-gray-200
-                          px-2 py-3
-                          text-[15px] leading-6 text-black
-                          placeholder:text-neutral-400
-                          focus:outline-none
-                          max-h-[192px] min-h-[40px]
-                        "
+                        className="flex-1 resize-none bg-gray-200 px-2 py-3 text-[15px] leading-6 text-black placeholder:text-neutral-400 focus:outline-none max-h-[192px] min-h-[40px]"
                         placeholder="Ask me anything…"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
@@ -642,18 +660,11 @@ export default function Chat() {
                         aria-label={
                           isSending ? "Stop generation" : "Send message"
                         }
-                        className={`
-                          shrink-0 grid place-items-center
-                          w-10 h-10 rounded-md
-                          ${
-                            isSending
-                              ? "bg-gradient-to-r from-[#132B67] to-[#1052E0] text-white hover:from-[#0f1e4a] hover:to-[#0c4a9e]"
-                              : "bg-gradient-to-r from-[#132B67] to-[#1052E0] text-white hover:from-[#0f1e4a] hover:to-[#0c4a9e]"
-                          }
-                          disabled:opacity-50
-                          transition-transform hover:scale-[1.03] active:scale-[0.98]
-                          focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2977BB]/40
-                        `}
+                        className={`shrink-0 grid place-items-center w-10 h-10 rounded-md ${
+                          isSending
+                            ? "bg-gradient-to-r from-[#132B67] to-[#1052E0] text-white hover:from-[#0f1e4a] hover:to-[#0c4a9e]"
+                            : "bg-gradient-to-r from-[#132B67] to-[#1052E0] text-white hover:from-[#0f1e4a] hover:to-[#0c4a9e]"
+                        } disabled:opacity-50 transition-transform hover:scale-[1.03] active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2977BB]/40`}
                       >
                         {isSending ? (
                           <svg
@@ -700,17 +711,48 @@ export default function Chat() {
 
       {/* Delete modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-sm mx-4">
-            <p className="text-lg font-semibold mb-4">Delete Chat</p>
-            <p className="text-neutral-600 mb-6">
-              Are you sure you want to delete this chat? This action cannot be
-              undone.
-            </p>
-            <div className="flex justify-end gap-3">
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-modal-title"
+        >
+          <div className="bg-white rounded-2xl w-full max-w-md mx-auto p-6 shadow-[0_10px_30px_rgba(16,24,40,0.08)] ring-1 ring-neutral-200/60">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-[#EEF6FF] flex items-center justify-center text-[#132B67] shrink-0">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="w-5 h-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
+                  />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3
+                  id="delete-modal-title"
+                  className="text-lg font-semibold text-neutral-900"
+                >
+                  Delete chat
+                </h3>
+                <p className="text-sm text-neutral-600 mt-2">
+                  Are you sure you want to delete this chat? This action cannot
+                  be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
               <button
                 onClick={() => setShowDeleteModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                className="px-4 py-2 bg-neutral-100 text-neutral-800 rounded-md hover:bg-neutral-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2977BB]/20"
               >
                 Cancel
               </button>
@@ -719,9 +761,9 @@ export default function Chat() {
                   if (sessionToDelete) deleteSession(sessionToDelete);
                   setShowDeleteModal(false);
                 }}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                className="px-4 py-2 bg-gradient-to-r from-[#132B67] to-[#1052E0] text-white rounded-md hover:from-[#0f1e4a] hover:to-[#0c4a9e] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2977BB]/40"
               >
-                Delete
+                Delete chat
               </button>
             </div>
           </div>
