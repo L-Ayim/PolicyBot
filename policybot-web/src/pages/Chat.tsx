@@ -41,9 +41,9 @@ export default function Chat() {
 
   async function calculateExpression(expression: string): Promise<string> {
     try {
-      const response = await fetch('http://localhost:3001/calculate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("http://localhost:3001/calculate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ expression }),
       });
       const data = await response.json();
@@ -53,42 +53,45 @@ export default function Chat() {
         return `Sorry, I couldn't calculate that expression. Error: ${data.error}`;
       }
     } catch (error) {
-      console.error('Calculator API error:', error);
-      return 'Sorry, I couldn\'t connect to the calculator service. Please try again.';
+      console.error("Calculator API error:", error);
+      return "Sorry, I couldn't connect to the calculator service. Please try again.";
     }
   }
 
-  async function retrieveDocuments(query: string): Promise<{ content: string; citations: any[] }> {
+  async function retrieveDocuments(
+    query: string
+  ): Promise<{ content: string; citations: any[] }> {
     try {
-      const response = await fetch('http://localhost:3002/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("http://localhost:3002/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query }),
       });
       const data = await response.json();
       if (data.success && data.documents.length > 0) {
-        const docsText = data.documents.map((doc: any) =>
-          `Document: ${doc.title}\n${doc.content}`
-        ).join('\n\n');
+        const docsText = data.documents
+          .map((doc: any) => `Document: ${doc.title}\n${doc.content}`)
+          .join("\n\n");
         return {
           content: `Retrieved ${data.documents.length} relevant document(s):\n\n${docsText}`,
           citations: data.documents.map((doc: any) => ({
             id: doc.id,
             title: doc.title,
-            type: 'document'
-          }))
+            type: "document",
+          })),
         };
       } else {
         return {
-          content: 'No relevant documents found for this query.',
-          citations: []
+          content: "No relevant documents found for this query.",
+          citations: [],
         };
       }
     } catch (error) {
-      console.error('Document retrieval error:', error);
+      console.error("Document retrieval error:", error);
       return {
-        content: 'Sorry, I couldn\'t retrieve relevant documents. Please try again.',
-        citations: []
+        content:
+          "Sorry, I couldn't retrieve relevant documents. Please try again.",
+        citations: [],
       };
     }
   }
@@ -392,39 +395,46 @@ export default function Chat() {
           model: "huihui_ai/nemotron-v1-abliterated",
           messages,
           stream: true,
-          tools: [{
-            type: "function",
-            function: {
-              name: "calculate",
-              description: "Evaluate a mathematical expression safely and return the result",
-              parameters: {
-                type: "object",
-                properties: {
-                  expression: {
-                    type: "string",
-                    description: "The mathematical expression to calculate, e.g., '2 + 3 * 4' or '(10 + 5) / 3'"
-                  }
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "calculate",
+                description:
+                  "Evaluate a mathematical expression safely and return the result",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    expression: {
+                      type: "string",
+                      description:
+                        "The mathematical expression to calculate, e.g., '2 + 3 * 4' or '(10 + 5) / 3'",
+                    },
+                  },
+                  required: ["expression"],
                 },
-                required: ["expression"]
-              }
-            }
-          }, {
-            type: "function",
-            function: {
-              name: "retrieve_documents",
-              description: "Search for relevant eBusiness documents and information based on a query",
-              parameters: {
-                type: "object",
-                properties: {
-                  query: {
-                    type: "string",
-                    description: "The search query for finding relevant eBusiness information"
-                  }
+              },
+            },
+            {
+              type: "function",
+              function: {
+                name: "retrieve_documents",
+                description:
+                  "Search for relevant eBusiness documents and information based on a query",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    query: {
+                      type: "string",
+                      description:
+                        "The search query for finding relevant eBusiness information",
+                    },
+                  },
+                  required: ["query"],
                 },
-                required: ["query"]
-              }
-            }
-          }],
+              },
+            },
+          ],
         }),
         signal: abortControllerRef.current!.signal,
       });
@@ -475,26 +485,26 @@ export default function Chat() {
         // Handle tool calls after streaming is complete
         if (toolCalls.length > 0) {
           for (const toolCall of toolCalls) {
-            let toolResult = '';
+            let toolResult = "";
             let toolCitations: any[] = [];
-            let toolType = '';
-            
-            if (toolCall.function?.name === 'calculate') {
+            let toolType = "";
+
+            if (toolCall.function?.name === "calculate") {
               const expression = toolCall.function.arguments?.expression;
               if (expression) {
                 toolResult = await calculateExpression(expression);
-                toolType = 'calculator';
+                toolType = "calculator";
               }
-            } else if (toolCall.function?.name === 'retrieve_documents') {
+            } else if (toolCall.function?.name === "retrieve_documents") {
               const query = toolCall.function.arguments?.query;
               if (query) {
                 const ragResult = await retrieveDocuments(query);
                 toolResult = ragResult.content;
                 toolCitations = ragResult.citations;
-                toolType = 'rag';
+                toolType = "rag";
               }
             }
-            
+
             if (toolResult) {
               // Add tool result message to conversation
               const toolMessage = {
@@ -502,30 +512,38 @@ export default function Chat() {
                 content: toolResult,
                 tool_call_id: toolCall.id,
                 citations: toolCitations,
-                toolType: toolType
+                toolType: toolType,
               };
-              
+
               // Continue conversation with tool result
-              const messagesWithTool = [...messages, 
-                { role: "assistant", content: accumulated, tool_calls: toolCalls },
-                toolMessage
+              const messagesWithTool = [
+                ...messages,
+                {
+                  role: "assistant",
+                  content: accumulated,
+                  tool_calls: toolCalls,
+                },
+                toolMessage,
               ];
-              
+
               // Make another API call to get the final response
-              const followUpRes = await fetch("http://localhost:11434/api/chat", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  model: "huihui_ai/nemotron-v1-abliterated",
-                  messages: messagesWithTool,
-                  stream: true,
-                }),
-              });
-              
+              const followUpRes = await fetch(
+                "http://localhost:11434/api/chat",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    model: "huihui_ai/nemotron-v1-abliterated",
+                    messages: messagesWithTool,
+                    stream: true,
+                  }),
+                }
+              );
+
               const followUpReader = followUpRes.body!.getReader();
               const followUpDecoder = new TextDecoder();
               let followUpAccumulated = accumulated;
-              
+
               try {
                 while (true) {
                   const { done, value } = await followUpReader.read();
@@ -549,7 +567,7 @@ export default function Chat() {
                                             ...m,
                                             content: followUpAccumulated,
                                             toolType: toolType,
-                                            citations: toolCitations
+                                            citations: toolCitations,
                                           }
                                         : m
                                     ),
@@ -818,12 +836,18 @@ export default function Chat() {
                             <div className="flex items-center gap-1">
                               {m.role === "assistant" ? "Awal" : "You"}
                               {m.toolType === "calculator" && (
-                                <span className="inline-flex items-center justify-center w-4 h-4 bg-orange-500 text-white rounded-full text-xs" title="Calculator used">
+                                <span
+                                  className="inline-flex items-center justify-center w-4 h-4 bg-orange-500 text-white rounded-full text-xs"
+                                  title="Calculator used"
+                                >
                                   🧮
                                 </span>
                               )}
                               {m.toolType === "rag" && (
-                                <span className="inline-flex items-center justify-center w-4 h-4 bg-green-500 text-white rounded-full text-xs" title="Knowledge base used">
+                                <span
+                                  className="inline-flex items-center justify-center w-4 h-4 bg-green-500 text-white rounded-full text-xs"
+                                  title="Knowledge base used"
+                                >
                                   📚
                                 </span>
                               )}
@@ -868,18 +892,25 @@ export default function Chat() {
                                   {(() => {
                                     // Parse content to separate main answer from citations
                                     const content = m.content;
-                                    const sourceMatch = content.match(/\nSource: (.+)$/);
-                                    
+                                    const sourceMatch =
+                                      content.match(/\nSource: (.+)$/);
+
                                     if (sourceMatch) {
-                                      const mainContent = content.replace(/\nSource: .+$/, '');
+                                      const mainContent = content.replace(
+                                        /\nSource: .+$/,
+                                        ""
+                                      );
                                       const sourceText = sourceMatch[1];
-                                      
+
                                       return (
                                         <>
                                           <ReactMarkdown
                                             remarkPlugins={[
                                               remarkMath,
-                                              [remarkGfm, { singleTilde: false }],
+                                              [
+                                                remarkGfm,
+                                                { singleTilde: false },
+                                              ],
                                             ]}
                                             rehypePlugins={[rehypeKatex]}
                                             components={{
@@ -907,7 +938,9 @@ export default function Chat() {
                                               ),
                                               li: ({ children, ...props }) => (
                                                 <li
-                                                  style={{ marginBottom: "0.25rem" }}
+                                                  style={{
+                                                    marginBottom: "0.25rem",
+                                                  }}
                                                   {...props}
                                                 >
                                                   {children}
@@ -925,7 +958,7 @@ export default function Chat() {
                                         </>
                                       );
                                     }
-                                    
+
                                     return (
                                       <ReactMarkdown
                                         remarkPlugins={[
@@ -958,7 +991,9 @@ export default function Chat() {
                                           ),
                                           li: ({ children, ...props }) => (
                                             <li
-                                              style={{ marginBottom: "0.25rem" }}
+                                              style={{
+                                                marginBottom: "0.25rem",
+                                              }}
                                               {...props}
                                             >
                                               {children}
@@ -973,22 +1008,31 @@ export default function Chat() {
                                 </div>
                               )}
                             </div>
-                            {m.role === "assistant" && m.citations && m.citations.length > 0 && !m.content.includes('Source:') && (
-                              <div className="mt-3 pt-2 border-t border-white/20">
-                                <div className="text-xs text-white/70 mb-1">Sources:</div>
-                                <div className="flex flex-wrap gap-1">
-                                  {m.citations.map((c, i) => (
-                                    <span
-                                      key={i}
-                                      className="inline-flex items-center px-2 py-1 bg-white/10 text-white/90 rounded-md text-xs"
-                                      title={c.type === 'document' ? 'From knowledge base' : 'Source'}
-                                    >
-                                      📄 {c.title}
-                                    </span>
-                                  ))}
+                            {m.role === "assistant" &&
+                              m.citations &&
+                              m.citations.length > 0 &&
+                              !m.content.includes("Source:") && (
+                                <div className="mt-3 pt-2 border-t border-white/20">
+                                  <div className="text-xs text-white/70 mb-1">
+                                    Sources:
+                                  </div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {m.citations.map((c, i) => (
+                                      <span
+                                        key={i}
+                                        className="inline-flex items-center px-2 py-1 bg-white/10 text-white/90 rounded-md text-xs"
+                                        title={
+                                          c.type === "document"
+                                            ? "From knowledge base"
+                                            : "Source"
+                                        }
+                                      >
+                                        📄 {c.title}
+                                      </span>
+                                    ))}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
                           </div>
                         </div>
                       </div>
