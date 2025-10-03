@@ -3,6 +3,7 @@ import { Edit, Trash2, User, Bot, Lightbulb } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import ReactMarkdown from "react-markdown";
 import remarkMath from "remark-math";
+import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import type { ChatMessage } from "../types/chat";
@@ -17,13 +18,41 @@ type Session = {
 };
 
 export default function Chat() {
+  function createGreetingMessage(): ChatMessage {
+    const greetings = [
+      "Hello, I'm Awal, your eBusiness assistant. How may I help you today?",
+      "Hi there! I'm Awal, your dedicated eBusiness assistant. What can I assist you with?",
+      "Welcome! I'm Awal, here to help with all your eBusiness needs. How can I support you today?",
+      "Greetings! I'm Awal, your eBusiness assistant. What eBusiness questions do you have for me?",
+      "Hello! I'm Awal, ready to assist with your eBusiness inquiries. How may I help you?",
+    ];
+    const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+    return {
+      id: uuidv4(),
+      role: "assistant",
+      content: randomGreeting,
+      createdAt: Date.now(),
+    };
+  }
+
   const [sessions, setSessions] = useState<Session[]>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.sessions) && parsed.sessions.length > 0)
-          return parsed.sessions as Session[];
+        if (Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
+          // Ensure all loaded sessions have at least one message (greeting) if they're new/empty
+          const sessionsWithGreetings = parsed.sessions.map((s: any) => {
+            if ((!s.messages || s.messages.length === 0) && s.title === "New chat") {
+              return {
+                ...s,
+                messages: [createGreetingMessage()],
+              };
+            }
+            return s;
+          });
+          return sessionsWithGreetings as Session[];
+        }
         if (Array.isArray(parsed.messages)) {
           return [
             {
@@ -36,11 +65,12 @@ export default function Chat() {
         }
       }
     } catch {}
+    const greetingMessage = createGreetingMessage();
     const seed: Session = {
       id: uuidv4(),
       title: "New chat",
       createdAt: Date.now(),
-      messages: [],
+      messages: [greetingMessage],
     };
     return [seed];
   });
@@ -93,11 +123,12 @@ export default function Chat() {
     setSessions((prev) => {
       const next = prev.filter((s) => s.id !== id);
       if (next.length === 0) {
+        const greetingMessage = createGreetingMessage();
         const seed: Session = {
           id: uuidv4(),
           title: "New chat",
           createdAt: Date.now(),
-          messages: [],
+          messages: [greetingMessage],
         };
         setActiveSessionId(seed.id);
         return [seed];
@@ -222,7 +253,7 @@ export default function Chat() {
       {
         role: "system",
         content:
-          "You are Awal, a friendly and expert eBusiness assistant. You strictly discuss only eCommerce, online marketing, digital business strategies, and related policies.  \nUnder no circumstances should you discuss any topics outside of eBusiness or policies related to it.  \nIf the user asks about anything else, firmly but politely say:  \n\"I'm sorry, I can only help with eBusiness-related topics. Please ask me about eCommerce, marketing, digital business, or relevant policies.\"  \nAlways maintain a friendly, professional, and helpful tone, but never deviate from eBusiness topics.",
+          "You are Awal, a professional eBusiness assistant. You must strictly discuss only eCommerce, online marketing, digital business strategies, and related policies.  \nUnder no circumstances should you answer questions or provide information on topics outside eBusiness and related policies.  \nIf a user asks about anything outside this scope, reply firmly and politely:  \n\"I'm sorry, I can only assist with eBusiness-related topics, including eCommerce, marketing, digital business, and policies. Please ask questions related to these areas.\"  \nDo not provide any additional information or try to connect off-topic subjects to eBusiness. Always maintain a friendly and professional tone while strictly enforcing this topic restriction.",
       },
       ...nextMessages.slice(-10).map((m) => ({
         role: m.role,
@@ -329,20 +360,7 @@ export default function Chat() {
 
   function newChat() {
     const id = uuidv4();
-    const greetings = [
-      "Hello, I'm Awal, your eBusiness assistant. How may I help you today?",
-      "Hi there! I'm Awal, your dedicated eBusiness assistant. What can I assist you with?",
-      "Welcome! I'm Awal, here to help with all your eBusiness needs. How can I support you today?",
-      "Greetings! I'm Awal, your eBusiness assistant. What eBusiness questions do you have for me?",
-      "Hello! I'm Awal, ready to assist with your eBusiness inquiries. How may I help you?",
-    ];
-    const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-    const greetingMessage: ChatMessage = {
-      id: uuidv4(),
-      role: "assistant",
-      content: randomGreeting,
-      createdAt: Date.now(),
-    };
+    const greetingMessage = createGreetingMessage();
     const s: Session = {
       id,
       title: "New chat",
@@ -579,8 +597,25 @@ export default function Chat() {
                               ) : (
                                 <div className="markdown">
                                   <ReactMarkdown
-                                    remarkPlugins={[remarkMath]}
+                                    remarkPlugins={[remarkMath, [remarkGfm, { singleTilde: false }]]}
                                     rehypePlugins={[rehypeKatex]}
+                                    components={{
+                                      ol: ({ children, ...props }) => (
+                                        <ol style={{ paddingLeft: '1.5rem', margin: '0.5rem 0' }} {...props}>
+                                          {children}
+                                        </ol>
+                                      ),
+                                      ul: ({ children, ...props }) => (
+                                        <ul style={{ paddingLeft: '1.5rem', margin: '0.5rem 0' }} {...props}>
+                                          {children}
+                                        </ul>
+                                      ),
+                                      li: ({ children, ...props }) => (
+                                        <li style={{ marginBottom: '0.25rem' }} {...props}>
+                                          {children}
+                                        </li>
+                                      ),
+                                    }}
                                   >
                                     {m.content}
                                   </ReactMarkdown>
