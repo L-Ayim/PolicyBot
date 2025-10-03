@@ -62,12 +62,24 @@ export default function Chat() {
     query: string
   ): Promise<{ content: string; citations: any[] }> {
     try {
+      console.log('Retrieving documents for query:', query);
       const response = await fetch("http://localhost:3002/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query }),
       });
+
+      if (!response.ok) {
+        console.error('RAG backend error:', response.status, response.statusText);
+        return {
+          content: `Sorry, I couldn't retrieve documents. Backend error: ${response.status} ${response.statusText}`,
+          citations: [],
+        };
+      }
+
       const data = await response.json();
+      console.log('Retrieved documents data:', data);
+
       if (data.success && data.documents.length > 0) {
         const docsText = data.documents
           .map((doc: any) => `Document: ${doc.title}\n${doc.content}`)
@@ -78,6 +90,7 @@ export default function Chat() {
             id: doc.id,
             title: doc.title,
             type: "document",
+            section: doc.section || "General content"
           })),
         };
       } else {
@@ -89,8 +102,7 @@ export default function Chat() {
     } catch (error) {
       console.error("Document retrieval error:", error);
       return {
-        content:
-          "Sorry, I couldn't retrieve relevant documents. Please try again.",
+        content: `Sorry, I couldn't retrieve documents. Connection failed: ${error instanceof Error ? error.message : String(error)}`,
         citations: [],
       };
     }
@@ -379,7 +391,7 @@ export default function Chat() {
       {
         role: "system",
         content:
-          'You are Awal, a professional eBusiness assistant. You must strictly discuss only eCommerce, online marketing, digital business strategies, and related policies.  \nUnder no circumstances should you answer questions or provide information on topics outside eBusiness and related policies.  \nIf a user asks about anything outside this scope, reply firmly and politely:  \n"I\'m sorry, I can only assist with eBusiness-related topics, including eCommerce, marketing, digital business, and policies. Please ask questions related to these areas."  \nDo not provide any additional information or try to connect off-topic subjects to eBusiness. Always maintain a friendly and professional tone while strictly enforcing this topic restriction.  \n\nYou have access to a calculator tool for mathematical computations and a document retrieval tool for accessing eBusiness knowledge. When users ask questions that would benefit from specific eBusiness information, use the retrieve_documents function to search for relevant content. Always use retrieved documents to provide accurate, detailed answers. For calculations, use the calculate function with the exact mathematical expression.  \n\nWhen providing information from retrieved documents, provide the main answer first. Then, on a separate line, clearly indicate the source like this:  \nSource: Document titled "Digital Marketing Strategies"  \n\nThis helps users understand where the information comes from and keeps citations visually distinct from the main answer.',
+          'You are Awal, a professional eBusiness assistant. You specialize in eCommerce, online marketing, digital business strategies, and related policies. You can help with ANY questions related to eBusiness topics including eCommerce, marketing, digital business, and policies.  \n\nYou have access to a calculator tool for mathematical computations and a document retrieval tool for accessing eBusiness knowledge. When users ask questions about eBusiness topics, ALWAYS use the retrieve_documents function to search for relevant content BEFORE answering. Use the retrieved information to provide accurate, detailed answers.  \n\nCRITICAL: When providing information from retrieved documents, provide the main answer first. Then, on a NEW LINE, add EXACTLY this format for EACH source used:  \nSource: Document titled "E-commerce Fundamentals" - Section: "Key components include online stores, payment processing..."  \n\nInclude the specific section text that was most relevant to your answer. This helps users understand exactly which parts of the documents you used to reason. Do NOT embed citations in the main text. Always put them on a separate line at the end.  \n\nFor calculations, use the calculate function with the exact mathematical expression.',
       },
       ...nextMessages.slice(-10).map((m) => ({
         role: m.role,
@@ -1010,25 +1022,45 @@ export default function Chat() {
                             </div>
                             {m.role === "assistant" &&
                               m.citations &&
-                              m.citations.length > 0 &&
-                              !m.content.includes("Source:") && (
-                                <div className="mt-3 pt-2 border-t border-white/20">
-                                  <div className="text-xs text-white/70 mb-1">
-                                    Sources:
+                              m.citations.length > 0 && (
+                                <div className="mt-4 pt-3 border-t border-white/30 bg-white/5 rounded-lg px-3 py-2">
+                                  <div className="text-xs font-medium text-white/90 mb-2 flex items-center">
+                                    <Lightbulb className="w-3 h-3 mr-1" />
+                                    Sources Used:
                                   </div>
-                                  <div className="flex flex-wrap gap-1">
+                                  <div className="space-y-2">
                                     {m.citations.map((c, i) => (
-                                      <span
+                                      <div
                                         key={i}
-                                        className="inline-flex items-center px-2 py-1 bg-white/10 text-white/90 rounded-md text-xs"
-                                        title={
-                                          c.type === "document"
-                                            ? "From knowledge base"
-                                            : "Source"
-                                        }
+                                        className="flex items-start space-x-2 p-2 bg-white/10 rounded-md border border-white/20"
                                       >
-                                        📄 {c.title}
-                                      </span>
+                                        <div className="flex-shrink-0 mt-0.5">
+                                          {c.type === "document" ? (
+                                            <div className="w-4 h-4 bg-blue-500/20 rounded flex items-center justify-center">
+                                              <span className="text-xs text-blue-300">📄</span>
+                                            </div>
+                                          ) : (
+                                            <div className="w-4 h-4 bg-green-500/20 rounded flex items-center justify-center">
+                                              <span className="text-xs text-green-300">🧮</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-xs font-medium text-white/90 truncate">
+                                            {c.title}
+                                          </div>
+                                          {c.section && (
+                                            <div className="text-xs text-white/60 mt-0.5">
+                                              Section: {c.section}
+                                            </div>
+                                          )}
+                                          <div className="text-xs text-white/50 mt-0.5">
+                                            {c.type === "document"
+                                              ? "Knowledge Base Document"
+                                              : "Calculation Result"}
+                                          </div>
+                                        </div>
+                                      </div>
                                     ))}
                                   </div>
                                 </div>

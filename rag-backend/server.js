@@ -62,7 +62,7 @@ const PORT = process.env.PORT || 3002;
 app.use(cors());
 app.use(express.json());
 
-// Search endpoint with keyword-based retrieval
+// Search endpoint with keyword-based retrieval and section extraction
 app.post('/search', (req, res) => {
   try {
     const { query } = req.body;
@@ -75,26 +75,52 @@ app.post('/search', (req, res) => {
     }
 
     const queryLower = query.toLowerCase();
+    const queryWords = queryLower.split(' ').filter(word => word.length > 2);
+
     const matchingDocuments = DOCUMENTS.filter(doc =>
       doc.title.toLowerCase().includes(queryLower) ||
       doc.content.toLowerCase().includes(queryLower)
     );
 
-    // Return top 3 most relevant documents (simple substring matching)
-    const relevantDocs = matchingDocuments.slice(0, 3);
+    // Return top 3 most relevant documents with section extraction
+    const relevantDocs = matchingDocuments.slice(0, 3).map(doc => {
+      // Extract relevant sections/snippets from the document
+      const contentLower = doc.content.toLowerCase();
+      let relevantSection = '';
 
-    res.json({
-      query,
-      documents: relevantDocs.map(doc => ({
+      // Find sentences that contain query words
+      const sentences = doc.content.split(/[.!?]+/).filter(s => s.trim().length > 0);
+      const relevantSentences = sentences.filter(sentence =>
+        queryWords.some(word => sentence.toLowerCase().includes(word))
+      );
+
+      if (relevantSentences.length > 0) {
+        // Take up to 2 relevant sentences as the section
+        relevantSection = relevantSentences.slice(0, 2).join('. ').trim();
+        if (!relevantSection.endsWith('.')) relevantSection += '.';
+      } else {
+        // Fallback: take first 100 characters as section
+        relevantSection = doc.content.substring(0, 150).trim();
+        if (doc.content.length > 150) relevantSection += '...';
+      }
+
+      return {
         id: doc.id,
         title: doc.title,
         content: doc.content,
+        section: relevantSection,
         citations: [{
           id: doc.id,
           title: doc.title,
-          type: 'document'
+          type: 'document',
+          section: relevantSection
         }]
-      })),
+      };
+    });
+
+    res.json({
+      query,
+      documents: relevantDocs,
       totalFound: matchingDocuments.length,
       success: true
     });
